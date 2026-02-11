@@ -1,41 +1,24 @@
-name: Video + Audio Stream (Loop & Auto-Restart)
-
-on:
-  workflow_dispatch:
-  repository_dispatch:
-    types: [restart_stream]
-
-jobs:
-  stream:
-    runs-on: ubuntu-latest
-    timeout-minutes: 358 
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Install FFmpeg
-        run: |
-          sudo apt update
-          sudo apt install -y ffmpeg
-
-      - name: Check Files
-        run: |
-          # Check karein ki video aur audio files folder mein hain ya nahi
-          if [ ! -f "video.mp4" ]; then echo "video.mp4 missing!" && exit 1; fi
-          if [ ! -f "audio.mp3" ]; then echo "audio.mp3 missing!" && exit 1; fi
-
       - name: Start Live Stream
         env:
           STREAM_URL: "rtmp://a.rtmp.youtube.com/live2/k4bv-wakv-50ad-uas6-8rtr"
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          echo "Video stream starting with background audio for 5 hours and 50 minutes..."
+          echo "Processing Video: Forward + Reverse + 0.7x Slow Motion..."
           
+          # FFmpeg Command with Complex Filter
           ffmpeg -re \
             -stream_loop -1 -i video.mp4 \
             -stream_loop -1 -i audio.mp3 \
-            -map 0:v:0 -map 1:a:0 \
+            -filter_complex \
+            "[0:v]setpts=PTS/0.7[v_slow]; \
+             [v_slow]split[v1][v2]; \
+             [v2]reverse[v_rev]; \
+             [v1][v_rev]concat=n=2:v=1:a=0[v_final]; \
+             [1:a]atempo=0.7[a_slow]; \
+             [a_slow]asplit[a1][a2]; \
+             [a2]areverse[a_rev]; \
+             [a1][a_rev]concat=n=2:v=0:a=1[a_final]" \
+            -map "[v_final]" -map "[a_final]" \
             -c:v libx264 \
             -preset veryfast \
             -pix_fmt yuv420p \
@@ -54,3 +37,4 @@ jobs:
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/${{ github.repository }}/dispatches \
             -d '{"event_type": "restart_stream"}'
+            
